@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - Dayalbagh Educational Institute</title>
+    <style>
+        .signup-form {
+            display: none;
+        }
+        .signup-form.active {
+            display: block;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .signup-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .signup-btn:hover {
+            background-color: #45a049;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .login-box {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .role-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #f0f0f0;
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+        }
+    </style>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            const signupForms = document.querySelectorAll('.signup-form');
+            const roleInfoDivs = document.querySelectorAll('.role-specific > div');
+
+            // Add click event listeners to tab buttons
+            tabButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const role = this.dataset.role;
+                    
+                    // Remove active class from all buttons
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    // Add active class to clicked button
+                    this.classList.add('active');
+
+                    // Hide all forms
+                    signupForms.forEach(form => form.classList.remove('active'));
+                    // Show selected form
+                    document.getElementById(`${role}Signup`).classList.add('active');
+
+                    // Hide all role info
+                    roleInfoDivs.forEach(div => div.style.display = 'none');
+                    // Show selected role info
+                    document.querySelector(`.${role}-info`).style.display = 'block';
+                });
+            });
+
+            // Add form submission handlers
+            signupForms.forEach(form => {
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const role = this.id.replace('Signup', '');
+                    const formData = new FormData(this);
+                    const password = formData.get(`${role.toLowerCase()}Password`);
+                    const confirmPassword = formData.get(`${role.toLowerCase()}ConfirmPassword`);
+
+                    if (password !== confirmPassword) {
+                        alert('Passwords do not match!');
+                        return;
+                    }
+
+                    try {
+                        // Create user with email and password
+                        const email = formData.get(`${role.toLowerCase()}Email`);
+                        const name = formData.get(`${role.toLowerCase()}Name`);
+                        
+                        // Validate email format
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        if (!emailRegex.test(email)) {
+                            alert('Please enter a valid email address');
+                            return;
+                        }
+
+                        // Validate password strength
+                        if (password.length < 6) {
+                            alert('Password must be at least 6 characters long');
+                            return;
+                        }
+
+                        // Create user
+                        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                        const user = userCredential.user;
+
+                        // Add user data to database
+                        await database.ref(`users/${role.toLowerCase()}/${user.uid}`).set({
+                            name: name,
+                            email: email,
+                            role: role.toLowerCase(),
+                            ...(role === 'Student' && {
+                                studentId: formData.get('studentId'),
+                                course: formData.get('studentCourse'),
+                                year: formData.get('studentYear')
+                            }),
+                            ...(role === 'Faculty' && {
+                                department: formData.get('facultyDepartment'),
+                                employeeId: formData.get('facultyId')
+                            })
+                        });
+
+                        // Send email verification
+                        await user.sendEmailVerification();
+                        
+                        alert('Registration successful! Please check your email to verify your account.');
+                        // Redirect to login page
+                        window.location.href = 'index.html';
+                    } catch (error) {
+                        console.error('Error during signup:', error);
+                        let errorMessage = 'An error occurred during registration.';
+                        
+                        // Provide more specific error messages
+                        switch(error.code) {
+                            case 'auth/email-already-in-use':
+                                errorMessage = 'This email is already registered.';
+                                break;
+                            case 'auth/invalid-email':
+                                errorMessage = 'Please enter a valid email address.';
+                                break;
+                            case 'auth/weak-password':
+                                errorMessage = 'Password must be at least 6 characters long.';
+                                break;
+                            default:
+                                errorMessage = error.message;
+                        }
+                        
+                        alert(errorMessage);
+                    }
+                });
+            });
+        });
+    </script>
+
+</head>
+<body>
+    <div class="container">
+        <div class="login-box">
+            <h1>Dayalbagh Educational Institute</h1>
+            <p class="subtitle">Create a new account</p>
+            <div class="role-tabs">
+                <button class="tab-btn" data-role="admin">Admin</button>
+                <button class="tab-btn" data-role="faculty">Faculty</button>
+                <button class="tab-btn active" data-role="student">Student</button>
+            </div>
+
+            <!-- Admin Signup Form -->
+            <form id="adminSignup" class="signup-form">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" name="adminName" placeholder="Enter full name" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="adminEmail" placeholder="Enter email" required>
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="adminUsername" placeholder="Enter username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="adminPassword" placeholder="Enter password" required>
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" name="adminConfirmPassword" placeholder="Confirm password" required>
+                </div>
+                <button type="submit" class="signup-btn">Sign Up as Admin</button>
+            </form>
+
+            <!-- Faculty Signup Form -->
+            <form id="facultySignup" class="signup-form">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" name="facultyName" placeholder="Enter full name" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="facultyEmail" placeholder="Enter email" required>
+                </div>
+                <div class="form-group">
+                    <label>Department</label>
+                    <select name="facultyDepartment" required>
+                        <option value="">Select Department</option>
+                        <option value="Computer Science">Computer Science</option>
+                        <option value="Mathematics">Mathematics</option>
+                        <option value="Physics">Physics</option>
+                        <option value="Chemistry">Chemistry</option>
+                        <option value="Biology">Biology</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Employee ID</label>
+                    <input type="text" name="facultyId" placeholder="Enter employee ID" required>
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="facultyUsername" placeholder="Enter username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="facultyPassword" placeholder="Enter password" required>
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" name="facultyConfirmPassword" placeholder="Confirm password" required>
+                </div>
+                <button type="submit" class="signup-btn">Sign Up as Faculty</button>
+            </form>
+
+            <!-- Student Signup Form -->
+            <form id="studentSignup" class="signup-form active">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" name="studentName" placeholder="Enter full name" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="studentEmail" placeholder="Enter email" required>
+                </div>
+                <div class="form-group">
+                    <label>Student ID</label>
+                    <input type="text" name="studentId" placeholder="Enter student ID" required>
+                </div>
+                <div class="form-group">
+                    <label>Course</label>
+                    <select name="studentCourse" required>
+                        <option value="">Select Course</option>
+                        <option value="BSc Computer Science">BSc Computer Science</option>
+                        <option value="BSc Mathematics">BSc Mathematics</option>
+                        <option value="BSc Physics">BSc Physics</option>
+                        <option value="BSc Chemistry">BSc Chemistry</option>
+                        <option value="BSc Biology">BSc Biology</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Year of Study</label>
+                    <select name="studentYear" required>
+                        <option value="">Select Year</option>
+                        <option value="1">1st Year</option>
+                        <option value="2">2nd Year</option>
+                        <option value="3">3rd Year</option>
+                        <option value="4">4th Year</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="studentUsername" placeholder="Enter username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="studentPassword" placeholder="Enter password" required>
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" name="studentConfirmPassword" placeholder="Confirm password" required>
+                </div>
+                <button type="submit" class="signup-btn">Sign Up as Student</button>
+            </form>
+
+            <div class="role-specific">
+                <div class="admin-info" style="display: none;">
+                    <p>Register as an administrator</p>
+                </div>
+                <div class="faculty-info" style="display: none;">
+                    <p>Register as a faculty member</p>
+                </div>
+                <div class="student-info" style="display: block;">
+                    <p>Register as a student</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="firebase-config.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            const signupForms = document.querySelectorAll('.signup-form');
+            const roleInfoDivs = document.querySelectorAll('.role-specific > div');
+
+            // Handle tab switching
+            tabButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Remove active class from all buttons
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    // Add active class to clicked button
+                    this.classList.add('active');
+                    
+                    // Hide all forms
+                    signupForms.forEach(form => form.classList.remove('active'));
+                    // Show selected form
+                    document.getElementById(`${this.dataset.role}Signup`).classList.add('active');
+
+                    // Show/hide role-specific info
+                    const role = this.dataset.role;
+                    roleInfoDivs.forEach(div => {
+                        if (div.classList.contains(`${role}-info`)) {
+                            div.style.display = 'block';
+                        } else {
+                            div.style.display = 'none';
+                        }
+                    });
+                });
+            });
+
+            // Handle form submissions
+            signupForms.forEach(form => {
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(this);
+                    const role = this.id.replace('Signup', '');
+                    const email = formData.get(`${role.toLowerCase()}Email`);
+                    const password = formData.get(`${role.toLowerCase()}Password`);
+                    const confirmPassword = formData.get(`${role.toLowerCase()}ConfirmPassword`);
+                    const name = formData.get(`${role.toLowerCase()}Name`);
+                    
+                    try {
+                        if (password !== confirmPassword) {
+                            throw new Error('Passwords do not match');
+                        }
+
+                        // Create user with Firebase Auth
+                        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                        const user = userCredential.user;
+
+                        // Save user data to database
+                        const userData = {
+                            name: name,
+                            role: role.toLowerCase(),
+                            email: email,
+                            createdAt: new Date().toISOString()
+                        };
+
+                        // Add role-specific data
+                        if (role === 'Faculty') {
+                            userData.department = formData.get('facultyDepartment');
+                            userData.employeeId = formData.get('facultyId');
+                        } else if (role === 'Student') {
+                            userData.studentId = formData.get('studentId');
+                            userData.course = formData.get('studentCourse');
+                            userData.year = formData.get('studentYear');
+                        }
+
+                        // Save to database
+                        await database.ref(`users/${user.uid}`).set(userData);
+
+                        // Show success notification
+                        const notification = document.createElement('div');
+                        notification.className = 'notification';
+                        notification.innerHTML = `
+                            <div class="notification-content">
+                                <h3>Success!</h3>
+                                <p>Your account has been created successfully!</p>
+                                <p>You can now login with your credentials.</p>
+                            </div>
+                        `;
+                        document.body.appendChild(notification);
+
+                        // Remove notification after 3 seconds
+                        setTimeout(() => {
+                            notification.remove();
+                            window.location.href = 'index.html';
+                        }, 3000);
+
+                        // Reset form
+                        this.reset();
+                    } catch (error) {
+                        alert(error.message);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

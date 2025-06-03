@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Role Login</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <style>
+        .tab-btn {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            background-color: #f0f0f0;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .tab-btn.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .tab-btn:hover {
+            background-color: #e0e0e0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .login-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .login-btn:hover {
+            background-color: #45a049;
+        }
+        .signup-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .signup-link a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+        .signup-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+    <script>
+
+
+        // Add role tabs functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            const roleInfoDivs = document.querySelectorAll('.role-specific > div');
+
+            // Add click event listeners to tab buttons
+            tabButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const role = this.dataset.role;
+                    
+                    // Remove active class from all buttons
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    // Add active class to clicked button
+                    this.classList.add('active');
+
+                    // Hide all role info
+                    roleInfoDivs.forEach(div => div.style.display = 'none');
+                    // Show selected role info
+                    document.querySelector(`.${role}-info`).style.display = 'block';
+
+                    // Update form fields based on role
+                    const loginForm = document.querySelector('.login-form');
+                    if (loginForm) {
+                        loginForm.innerHTML = `
+                            <div class="form-group">
+                                <label>${role === 'admin' ? 'Username' : 'Email'}</label>
+                                <input type="${role === 'admin' ? 'text' : 'email'}" 
+                                       name="email" 
+                                       id="email" 
+                                       placeholder="Enter ${role === 'admin' ? 'username' : 'email'}" 
+                                       required>
+                            </div>
+                            <div class="form-group">
+                                <label>Password</label>
+                                <input type="password" 
+                                       name="password" 
+                                       id="password" 
+                                       placeholder="Enter password" 
+                                       required>
+                            </div>
+                            <button type="submit" class="login-btn">Login as ${role}</button>
+                        `;
+                    }
+                });
+            });
+
+            // Initialize with student tab active
+            document.querySelector('[data-role="student"]').click();
+
+            // Add login handler
+            const loginForm = document.querySelector('.login-form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const emailInput = this.querySelector('[name="email"]');
+                    const passwordInput = this.querySelector('[name="password"]');
+                    
+                    if (!emailInput || !passwordInput) {
+                        console.error('Form inputs not found');
+                        alert('Login form is not properly initialized. Please try refreshing the page.');
+                        return;
+                    }
+
+                    const email = emailInput.value.trim();
+                    const password = passwordInput.value.trim();
+                    const activeTab = document.querySelector('.tab-btn.active');
+                    const role = activeTab ? activeTab.dataset.role.toLowerCase() : 'student';
+
+                    if (!email || !password) {
+                        alert('Please enter both email and password.');
+                        return;
+                    }
+
+                    try {
+                        // Show loading state
+                        const loginBtn = this.querySelector('.login-btn');
+                        if (loginBtn) {
+                            const originalText = loginBtn.textContent;
+                            loginBtn.textContent = 'Logging in...';
+                            loginBtn.disabled = true;
+                        }
+
+                        // Sign in with email and password
+                        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                        const user = userCredential.user;
+
+                        // Verify email
+                        if (!user.emailVerified) {
+                            throw new Error('Please verify your email address first.');
+                        }
+
+                        // Check if user exists in database
+                        const userData = await database.ref(`users/${role}/${user.uid}`).once('value');
+                        if (!userData.exists()) {
+                            throw new Error('User data not found in the system.');
+                        }
+
+                        // Update user's last login time
+                        await database.ref(`users/${role}/${user.uid}`).update({
+                            lastLogin: new Date().toISOString()
+                        });
+
+                        // Redirect to appropriate dashboard
+                        window.location.href = `${role}-dashboard.html`;
+
+                    } catch (error) {
+                        console.error('Login error:', error);
+                        if (loginBtn) {
+                            loginBtn.textContent = 'Login';
+                            loginBtn.disabled = false;
+                        }
+                        
+                        let errorMessage = 'An error occurred during login.';
+                        
+                        // Provide more specific error messages
+                        switch(error.code) {
+                            case 'auth/user-not-found':
+                                errorMessage = 'No user found with this email.';
+                                break;
+                            case 'auth/wrong-password':
+                                errorMessage = 'Incorrect password.';
+                                break;
+                            case 'auth/too-many-requests':
+                                errorMessage = 'Too many failed attempts. Please try again later.';
+                                break;
+                            case 'auth/invalid-email':
+                                errorMessage = 'Please enter a valid email address.';
+                                break;
+                            case 'auth/email-not-verified':
+                                errorMessage = 'Please verify your email address first.';
+                                break;
+                            default:
+                                errorMessage = error.message;
+                        }
+                        
+                        alert(errorMessage);
+                    }
+                });
+            }
+        });
+    </script>
+            }
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="login-box">
+            <h1>Dayalbagh Educational Institute</h1>
+            <p class="subtitle">Login to your account</p>
+            <div class="role-tabs">
+                <button class="tab-btn active" data-role="admin">Admin</button>
+                <button class="tab-btn" data-role="faculty">Faculty</button>
+                <button class="tab-btn" data-role="student">Student</button>
+            </div>
+            
+            <div class="role-specific">
+                <div class="admin-info"></div>
+                <div class="faculty-info"></div>
+                <div class="student-info"></div>
+            </div>
+            
+            <form class="login-form"></form>
+            <p class="signup-link"><a href="signup.html">Don't have an account? Sign Up</a></p>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
